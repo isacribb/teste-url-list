@@ -1,0 +1,66 @@
+name: Resolve Domains to IPs
+
+on:
+  push:
+    paths:
+      - allow
+schedule:
+  - cron: "*/5 * * * *"
+
+
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          pip install dnspython
+
+      - name: Resolve domains
+        run: |
+          python3 << 'EOF'
+          import dns.resolver
+
+          input_file = "allow"
+          output_file = "allow-ip.txt"
+
+          ips = set()
+
+          try:
+              with open(input_file, "r") as f:
+                  domains = [line.strip() for line in f.readlines() if line.strip()]
+          except FileNotFoundError:
+              print("Arquivo 'allow' não encontrado.")
+              domains = []
+
+          resolver = dns.resolver.Resolver()
+          resolver.timeout = 2
+          resolver.lifetime = 2
+
+          for domain in domains:
+              try:
+                  answers = resolver.resolve(domain, "A")
+                  for answer in answers:
+                      ips.add(answer.to_text())
+              except Exception as e:
+                  print(f"Erro ao resolver {domain}: {e}")
+
+          with open(output_file, "w") as f:
+              for ip in sorted(ips):
+                  f.write(ip + "\n")
+
+          print("Arquivo allow-ip.txt gerado com sucesso.")
+          EOF
+
+      - name: Commit changes
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add allow-ip.txt
+          git commit -m "Atualização automática da lista de IPs" || echo "Nenhuma mudança."
+          git push
