@@ -5,7 +5,7 @@ on:
     paths:
       - allow
   schedule:
-    - cron: "*/5 * * * *" # a cada 5 minutos
+  - cron: "*/5 * * * *" # a cada 5 minutos # a cada 5 minutos
 
 jobs:
   build:
