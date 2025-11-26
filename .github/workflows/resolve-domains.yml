@@ -4,10 +4,8 @@ on:
   push:
     paths:
       - allow
-schedule:
-  - cron: "*/5 * * * *"
-
-
+  schedule:
+    - cron: "*/5 * * * *" # a cada 5 minutos
 
 jobs:
   build:
