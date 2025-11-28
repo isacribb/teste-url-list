@@ -1,11 +1,15 @@
 name: Resolve Domains to IPs
 
+concurrency:
+  group: ip-update
+  cancel-in-progress: false
+
 on:
   push:
     paths:
       - allow
   schedule:
-    - cron: "0 6 * * *"  # 03:00 BRT
+    - cron: "0 6 * * *"  # todo dia às 03:00 BRT
 
 jobs:
   build:
@@ -14,8 +18,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
 
       - name: Install dependencies
         run: |
@@ -33,7 +35,7 @@ jobs:
 
           try:
               with open(input_file, "r") as f:
-                  domains = [line.strip() for line in f if line.strip()]
+                  domains = [line.strip() for line in f.readlines() if line.strip()]
           except FileNotFoundError:
               print("Arquivo 'allow' não encontrado.")
               domains = []
@@ -44,7 +46,7 @@ jobs:
 
           for domain in domains:
               if "*" in domain:
-                  continue  # wildcards são resolvidos no outro workflow
+                  continue  # wildcards são tratados no outro workflow
               try:
                   answers = resolver.resolve(domain, "A")
                   for answer in answers:
@@ -56,7 +58,7 @@ jobs:
               for ip in sorted(ips):
                   f.write(ip + "\n")
 
-          print("Arquivo allow-ip.txt atualizado (domínios diretos).")
+          print("Arquivo allow-ip.txt gerado com sucesso.")
           EOF
 
       - name: Commit changes
@@ -64,5 +66,9 @@ jobs:
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           git add allow-ip.txt
-          git commit -m "Atualização automática (domínios diretos)" || echo "Nenhuma mudança."
-          git push --force-with-lease
+          git commit -m "Atualização automática da lista de IPs (domains)" || echo "Nenhuma mudança."
+      
+      - name: Push changes
+        run: |
+          git pull --rebase
+          git push
