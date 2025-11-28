@@ -5,7 +5,10 @@ on:
     paths:
       - allow
   schedule:
-    - cron: "0 6 * * *" # 03:00 BRT
+    - cron: "0 6 * * *"  # executa todo dia às 03:00 BRT
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -14,6 +17,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: Install dependencies
         run: pip install dnspython
@@ -24,14 +29,13 @@ jobs:
           import dns.resolver
 
           input_file = "allow"
-          output_file = "allow-ip-domains.txt"
+          output_file = "allow-ip.txt"
 
           ips = set()
 
           try:
               with open(input_file, "r") as f:
-                  domains = [line.strip() for line in f.readlines()
-                             if line.strip() and not line.startswith("*.")]
+                  domains = [d.strip() for d in f if d.strip() and not d.startswith("*.")]
           except FileNotFoundError:
               domains = []
 
@@ -44,23 +48,24 @@ jobs:
                   answers = resolver.resolve(domain, "A")
                   for answer in answers:
                       ips.add(answer.to_text())
-              except:
-                  pass
+              except Exception as e:
+                  print(f"Erro ao resolver {domain}: {e}")
 
           with open(output_file, "w") as f:
               for ip in sorted(ips):
                   f.write(ip + "\n")
+
+          print("allow-ip.txt atualizado com sucesso.")
           EOF
 
-      - name: Merge IP files
+      - name: Commit and push changes
         run: |
-          touch allow-ip-wildcards.txt
-          cat allow-ip-domains.txt allow-ip-wildcards.txt | sort -u > allow-ip.txt
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
 
-      - name: Commit changes
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          git add allow-ip.txt allow-ip-domains.txt
-          git commit -m "Atualização automática (domínios)" || echo "Nenhuma mudança."
+          git add allow-ip.txt
+          git diff --cached --quiet && echo "Sem mudanças." && exit 0
+
+          git commit -m "Atualização automática (domínios)"
+          git pull --rebase
           git push
