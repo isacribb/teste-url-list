@@ -1,12 +1,15 @@
 name: Resolve Wildcards to IPs
 
 on:
-  push:
-    paths:
-      - allow          # sempre rodar quando "allow" mudar
+  # Roda sempre após o workflow 1 concluir
+  workflow_run:
+    workflows: ["Resolve Domains to IPs"]
+    types:
+      - completed
 
+  # Também roda domingo às 03:00 da manhã (06:00 UTC)
   schedule:
-    - cron: "0 6 * * 0"   # Domingo às 03:00 BRT (06:00 UTC)
+    - cron: "0 6 * * 0"
 
 jobs:
   build:
@@ -36,6 +39,7 @@ jobs:
 
           final_ips = set()
           domains_to_resolve = set()
+          wildcard_bases = set()
 
           # -------------------------------------------------------
           # 1. Ler arquivo allow
@@ -44,15 +48,23 @@ jobs:
               lines = [l.strip() for l in f if l.strip()]
 
           for line in lines:
+              # IP direto
               if all(c.isdigit() or c == '.' for c in line):
                   final_ips.add(line)
                   continue
 
+              # Wildcard
               if line.startswith("*."):
-                  domains_to_resolve.add(line[2:])
+                  base = line[2:]
+                  wildcard_bases.add(base)
+                  domains_to_resolve.add(base)
               else:
+                  # domínio normal
                   domains_to_resolve.add(line)
 
+          # -------------------------------------------------------
+          # 2. Resolver domínios diretos
+          # -------------------------------------------------------
           def resolve_domain(domain):
               try:
                   answers = resolver.resolve(domain, "A")
@@ -60,17 +72,16 @@ jobs:
               except:
                   return []
 
-          # Resolver domínios diretos
           for d in list(domains_to_resolve):
               for ip in resolve_domain(d):
                   final_ips.add(ip)
 
-          # Wildcards (*.dominio)
-          wildcards = [l[2:] for l in lines if l.startswith("*.")]
-
-          # Descobrir subdomínios de wildcard
+          # -------------------------------------------------------
+          # 3. Descobrir subdomínios de wildcards
+          # -------------------------------------------------------
           def discover_subdomains(base):
               found = set()
+
               # CRT.SH
               try:
                   url = f"https://crt.sh/?q=%25.{base}&output=json"
@@ -79,12 +90,13 @@ jobs:
                       for entry in json.loads(data):
                           name = entry.get("name_value", "")
                           for sub in name.split("\n"):
+                              sub = sub.strip()
                               if sub.endswith(base):
-                                  found.add(sub.strip())
+                                  found.add(sub)
               except:
                   pass
 
-              # BufferOver
+              # Bufferover
               try:
                   url = f"https://dns.bufferover.run/dns?q=.{base}"
                   r = requests.get(url, timeout=10).json()
@@ -100,13 +112,15 @@ jobs:
               return found
 
           # Resolver subdomínios descobertos
-          for base in wildcards:
+          for base in wildcard_bases:
               subs = discover_subdomains(base)
-
               for sub in subs:
                   for ip in resolve_domain(sub):
                       final_ips.add(ip)
 
+          # -------------------------------------------------------
+          # 4. Escrever arquivo final
+          # -------------------------------------------------------
           with open(OUTPUT_FILE, "w") as f:
               for ip in sorted(final_ips):
                   f.write(ip + "\n")
@@ -118,6 +132,10 @@ jobs:
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
+
+          # garantir que a branch está atualizada antes do push
+          git pull --rebase
+
           git add allow-ip.txt
           git commit -m "Atualização automática (wildcards)" || echo "Nenhuma mudança."
           git push
