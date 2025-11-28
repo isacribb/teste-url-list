@@ -1,0 +1,109 @@
+name: Resolve Wildcard Domains
+
+on:
+  schedule:
+    - cron: "0 6 * * 0"  # Todo domingo às 03:00 BRT (06:00 UTC)
+  workflow_dispatch:      # Permite execução manual
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          pip install dnspython requests
+
+      - name: Resolve wildcard domains via CT Logs
+        run: |
+          python3 << 'EOF'
+          import dns.resolver
+          import requests
+          import json
+          import re
+
+          input_file = "allow"
+          output_file = "wildcard-temp.txt"
+
+          resolver = dns.resolver.Resolver()
+          resolver.timeout = 2
+          resolver.lifetime = 2
+
+          ips = set()
+
+          # Função que resolve um domínio real
+          def resolve_domain(domain):
+              try:
+                  answers = resolver.resolve(domain, "A")
+                  for answer in answers:
+                      ips.add(answer.to_text())
+              except Exception:
+                  pass
+
+          # Carrega somente entradas com wildcard
+          with open(input_file, "r") as f:
+              wildcards = [line.strip() for line in f.readlines() if "*" in line]
+
+          print("Wildcards carregados:", wildcards)
+
+          for wildcard in wildcards:
+              # remove * e normaliza
+              base = wildcard.replace("*.", "").replace("*", "").strip(".")
+              if not base:
+                  continue
+
+              print(f"\nConsultando CT Logs para: {base}")
+
+              try:
+                  url = f"https://crt.sh/?q={base}&output=json"
+                  resp = requests.get(url, timeout=10)
+
+                  if resp.status_code != 200:
+                      print(f"Falha ao consultar crt.sh para {base}")
+                      continue
+
+                  data = json.loads(resp.text)
+
+                  subdomains = set()
+
+                  # Extrair nomes válidos
+                  for entry in data:
+                      name_value = entry.get("name_value", "")
+                      for d in name_value.split("\n"):
+                          d = d.strip()
+                          if "*" in d:
+                              continue
+                          if base in d:
+                              subdomains.add(d)
+
+                  print(f"Subdomínios encontrados para {base}: {subdomains}")
+
+                  # Agora resolver só os existentes
+                  for sub in subdomains:
+                      resolve_domain(sub)
+
+              except Exception as e:
+                  print("Erro geral ao consultar CT Logs:", e)
+
+          # Salvar IPs de wildcards
+          with open(output_file, "w") as f:
+              for ip in sorted(ips):
+                  f.write(ip + "\n")
+
+          print("\nArquivo wildcard-temp.txt gerado com sucesso.")
+          EOF
+
+      - name: Merge wildcard IPs with allow-ip.txt
+        run: |
+          touch allow-ip.txt
+          cat wildcard-temp.txt allow-ip.txt | sort -u > allow-ip-new.txt
+          mv allow-ip-new.txt allow-ip.txt
+
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add allow-ip.txt
+          git commit -m "Atualização de IPs via wildcards (CT Logs)" || echo "Sem mudanças."
+          git push
