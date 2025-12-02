@@ -1,21 +1,18 @@
-name: Resolve Wildcards
-
 on:
-push:
-paths:
-- allow
-- wordlist.txt
-schedule:
-- cron: "0 6 * * 0" # todo domingo às 03:00 BRT
+  push:
+    paths:
+    - allow
+    - wordlist.txt
+  schedule:
+  - cron: "0 6 * * 0" # 03:00 BRT (UTC-3)
 
 permissions:
-contents: write
+  contents: write
 
 jobs:
-wildcards:
-runs-on: ubuntu-latest
-
-text
+  wildcards:
+    runs-on: ubuntu-latest
+   
 steps:
   - name: Wait 60 seconds to avoid conflicts
     run: sleep 60
@@ -30,25 +27,25 @@ steps:
 
   - name: Resolve wildcards
     run: |
-      python3 << 'EOF'
+      python3 - << 'PYCODE'
       import dns.resolver
       from pathlib import Path
 
       allow_file = Path("allow")
       wordlist_file = Path("wordlist.txt")
       output_file = Path("allow-ip-wildcards.txt")
-
+  
       ips = set()
       wildcards = set()
       prefixes = set()
-
+  
       if allow_file.exists():
           with allow_file.open("r") as f:
               for line in f:
                   d = line.strip()
                   if d.startswith("*.") and len(d) > 2:
                       wildcards.add(d[2:])
-
+  
       if wordlist_file.exists():
           with wordlist_file.open("r") as f:
               for line in f:
@@ -60,7 +57,7 @@ steps:
           resolver = dns.resolver.Resolver()
           resolver.timeout = 2
           resolver.lifetime = 2
-
+  
           for base in sorted(wildcards):
               for prefix in sorted(prefixes):
                   fqdn = f"{prefix}.{base}"
@@ -74,7 +71,7 @@ steps:
       with output_file.open("w") as f:
           for ip in sorted(ips):
               f.write(ip + "\n")
-      EOF
+      PYCODE
 
   - name: Commit and push changes
     run: |
