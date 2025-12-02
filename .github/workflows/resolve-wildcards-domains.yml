@@ -1,78 +1,107 @@
 name: Resolve Wildcards
 
 on:
-  push:
-    paths:
-      - allow
-  schedule:
-    - cron: "0 6 * * 0"  # todo domingo às 03:00 BRT
+push:
+paths:
+- allow
+- wordlist.txt
+schedule:
+- cron: "0 6 * * 0" # todo domingo às 03:00 BRT
+
+concurrency:
+group: wildcard-${{ github.ref_name }}
+cancel-in-progress: false
 
 permissions:
-  contents: write
+contents: write
 
 jobs:
-  wildcards:
-    runs-on: ubuntu-latest
+wildcards:
+runs-on: ubuntu-latest
 
-    steps:
-      - name: Wait 60 seconds to avoid conflicts
-        run: sleep 60
+text
+steps:
+  - name: Wait 60 seconds to avoid conflicts
+    run: sleep 60
 
-      - name: Checkout
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
+  - name: Checkout
+    uses: actions/checkout@v3
+    with:
+      fetch-depth: 0
 
-      - name: Install dependencies
-        run: pip install dnspython
+  - name: Install dependencies
+    run: pip install dnspython
 
-      - name: Resolve wildcards
-        run: |
-          python3 << 'EOF'
-          import dns.resolver
+  - name: Resolve wildcards
+    run: |
+      python3 << 'EOF'
+      import dns.resolver
+      from pathlib import Path
 
-          input_file = "allow"
-          output_file = "allow-ip-wildcards.txt"
+      allow_file = Path("allow")
+      wordlist_file = Path("wordlist.txt")
+      output_file = Path("allow-ip-wildcards.txt")
 
-          ips = set()
-          wildcards = []
+      ips = set()
+      wildcards = set()
+      prefixes = set()
 
-          try:
-              with open(input_file, "r") as f:
-                  for line in f:
-                      d = line.strip()
-                      if d.startswith("*."):
-                          wildcards.append(d[2:])  # remove "*."
-          except FileNotFoundError:
-              pass
+      # Ler wildcards do arquivo allow (linhas iniciando com *.)
+      if allow_file.exists():
+          with allow_file.open("r") as f:
+              for line in f:
+                  d = line.strip()
+                  if d.startswith("*.") and len(d) > 2:
+                      wildcards.add(d[2:])  # remove "*."
 
+      # Ler wordlist de possíveis subdomínios
+      if wordlist_file.exists():
+          with wordlist_file.open("r") as f:
+              for line in f:
+                  p = line.strip()
+                  if p and not p.startswith("#"):
+                      prefixes.add(p)
+
+      if not wildcards:
+          print("Nenhum wildcard encontrado em 'allow'.")
+      if not prefixes:
+          print("Nenhum prefixo encontrado em 'wordlist.txt'.")
+
+      if wildcards and prefixes:
           resolver = dns.resolver.Resolver()
           resolver.timeout = 2
           resolver.lifetime = 2
 
-          for domain in wildcards:
-              try:
-                  answers = resolver.resolve(domain, "A")
-                  for answer in answers:
-                      ips.add(answer.to_text())
-              except Exception as e:
-                  print(f"Erro wildcard {domain}: {e}")
+          for base in sorted(wildcards):
+              print(f"Processando wildcard base: {base}")
+              for prefix in sorted(prefixes):
+                  fqdn = f"{prefix}.{base}"
+                  try:
+                      answers = resolver.resolve(fqdn, "A")
+                      for answer in answers:
+                          ip = answer.to_text()
+                          ips.add(ip)
+                          print(f"OK {fqdn} -> {ip}")
+                  except Exception:
+                      # Se não resolver, simplesmente ignora
+                      pass
 
-          with open(output_file, "w") as f:
-              for ip in sorted(ips):
-                  f.write(ip + "\n")
+      # Gravar IPs (se houver)
+      with output_file.open("w") as f:
+          for ip in sorted(ips):
+              f.write(ip + "\n")
 
-          print("allow-ip-wildcards.txt atualizado com sucesso.")
-          EOF
+      print("allow-ip-wildcards.txt atualizado com sucesso.")
+      EOF
 
-      - name: Commit and push changes
-        run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
+  - name: Commit and push changes
+    run: |
+      git config user.name "GitHub Actions"
+      git config user.email "actions@github.com"
 
-          git add allow-ip-wildcards.txt
-          git diff --cached --quiet && echo "Sem mudanças." && exit 0
+      git add allow-ip-wildcards.txt
+      git diff --cached --quiet && echo "Sem mudanças." && exit 0
 
-          git commit -m "Atualização automática (wildcards)"
-          git pull --rebase || true
-          git push || git push --force
+      git commit -m "Atualização automática (wildcards via wordlist)"
+      git pull --rebase || true
+      git push || git push --force
