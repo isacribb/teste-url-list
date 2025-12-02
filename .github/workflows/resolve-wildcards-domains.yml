@@ -8,10 +8,6 @@ paths:
 schedule:
 - cron: "0 6 * * 0" # todo domingo às 03:00 BRT
 
-concurrency:
-group: wildcard-${{ github.ref_name }}
-cancel-in-progress: false
-
 permissions:
 contents: write
 
@@ -46,15 +42,13 @@ steps:
       wildcards = set()
       prefixes = set()
 
-      # Ler wildcards do arquivo allow (linhas iniciando com *.)
       if allow_file.exists():
           with allow_file.open("r") as f:
               for line in f:
                   d = line.strip()
                   if d.startswith("*.") and len(d) > 2:
-                      wildcards.add(d[2:])  # remove "*."
+                      wildcards.add(d[2:])
 
-      # Ler wordlist de possíveis subdomínios
       if wordlist_file.exists():
           with wordlist_file.open("r") as f:
               for line in f:
@@ -62,46 +56,32 @@ steps:
                   if p and not p.startswith("#"):
                       prefixes.add(p)
 
-      if not wildcards:
-          print("Nenhum wildcard encontrado em 'allow'.")
-      if not prefixes:
-          print("Nenhum prefixo encontrado em 'wordlist.txt'.")
-
       if wildcards and prefixes:
           resolver = dns.resolver.Resolver()
           resolver.timeout = 2
           resolver.lifetime = 2
 
           for base in sorted(wildcards):
-              print(f"Processando wildcard base: {base}")
               for prefix in sorted(prefixes):
                   fqdn = f"{prefix}.{base}"
                   try:
                       answers = resolver.resolve(fqdn, "A")
                       for answer in answers:
-                          ip = answer.to_text()
-                          ips.add(ip)
-                          print(f"OK {fqdn} -> {ip}")
+                          ips.add(answer.to_text())
                   except Exception:
-                      # Se não resolver, simplesmente ignora
                       pass
 
-      # Gravar IPs (se houver)
       with output_file.open("w") as f:
           for ip in sorted(ips):
               f.write(ip + "\n")
-
-      print("allow-ip-wildcards.txt atualizado com sucesso.")
       EOF
 
   - name: Commit and push changes
     run: |
       git config user.name "GitHub Actions"
       git config user.email "actions@github.com"
-
       git add allow-ip-wildcards.txt
       git diff --cached --quiet && echo "Sem mudanças." && exit 0
-
       git commit -m "Atualização automática (wildcards via wordlist)"
       git pull --rebase || true
       git push || git push --force
