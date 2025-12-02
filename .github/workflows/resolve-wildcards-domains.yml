@@ -4,7 +4,7 @@ on:
     - allow
     - wordlist.txt
   schedule:
-  - cron: "0 6 * * 0" # 03:00 BRT (UTC-3)
+  - cron: "0 9 * * 0" # 06:00 BRT (UTC-3) aos domingos
 
 permissions:
   contents: write
@@ -12,73 +12,102 @@ permissions:
 jobs:
   wildcards:
     runs-on: ubuntu-latest
-   
-steps:
-  - name: Wait 60 seconds to avoid conflicts
-    run: sleep 60
-
-  - name: Checkout
-    uses: actions/checkout@v3
-    with:
-      fetch-depth: 0
-
-  - name: Install dependencies
-    run: pip install dnspython
-
-  - name: Resolve wildcards
-    run: |
-      python3 - << 'PYCODE'
-      import dns.resolver
-      from pathlib import Path
-
-      allow_file = Path("allow")
-      wordlist_file = Path("wordlist.txt")
-      output_file = Path("allow-ip-wildcards.txt")
-  
-      ips = set()
-      wildcards = set()
-      prefixes = set()
-  
-      if allow_file.exists():
-          with allow_file.open("r") as f:
-              for line in f:
-                  d = line.strip()
-                  if d.startswith("*.") and len(d) > 2:
-                      wildcards.add(d[2:])
-  
-      if wordlist_file.exists():
-          with wordlist_file.open("r") as f:
-              for line in f:
-                  p = line.strip()
-                  if p and not p.startswith("#"):
-                      prefixes.add(p)
-
-      if wildcards and prefixes:
-          resolver = dns.resolver.Resolver()
-          resolver.timeout = 2
-          resolver.lifetime = 2
-  
-          for base in sorted(wildcards):
-              for prefix in sorted(prefixes):
-                  fqdn = f"{prefix}.{base}"
-                  try:
-                      answers = resolver.resolve(fqdn, "A")
-                      for answer in answers:
-                          ips.add(answer.to_text())
-                  except Exception:
-                      pass
-
-      with output_file.open("w") as f:
-          for ip in sorted(ips):
-              f.write(ip + "\n")
-      PYCODE
-
-  - name: Commit and push changes
-    run: |
-      git config user.name "GitHub Actions"
-      git config user.email "actions@github.com"
-      git add allow-ip-wildcards.txt
-      git diff --cached --quiet && echo "Sem mudanças." && exit 0
-      git commit -m "Atualização automática (wildcards via wordlist)"
-      git pull --rebase || true
-      git push || git push --force
+    
+    steps:  # ← CORREÇÃO: Identação correta (2 espaços)
+      - name: Wait 60 seconds to avoid conflicts
+        run: sleep 60
+        
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          
+      - name: Install dependencies
+        run: pip install dnspython
+        
+      - name: Resolve wildcards
+        run: |
+          python3 - << 'PYCODE'
+          import dns.resolver
+          from pathlib import Path
+          
+          allow_file = Path("allow")
+          wordlist_file = Path("wordlist.txt")
+          output_file = Path("allow-ip-wildcards.txt")
+      
+          ips = set()
+          wildcards = set()
+          prefixes = set()
+      
+          # Lê wildcards do arquivo allow
+          if allow_file.exists():
+              with allow_file.open("r") as f:
+                  for line in f:
+                      d = line.strip()
+                      if d.startswith("*.") and len(d) > 2:
+                          wildcards.add(d[2:])
+      
+          # Lê prefixos da wordlist
+          if wordlist_file.exists():
+              with wordlist_file.open("r") as f:
+                  for line in f:
+                      p = line.strip()
+                      if p and not p.startswith("#"):
+                          prefixes.add(p)
+          
+          # Resolve DNS para cada combinação
+          if wildcards and prefixes:
+              resolver = dns.resolver.Resolver()
+              resolver.timeout = 3  # MELHORIA: Aumentei timeout
+              resolver.lifetime = 5
+              
+              total = len(wildcards) * len(prefixes)
+              count = 0
+              
+              for base in sorted(wildcards):
+                  for prefix in sorted(prefixes):
+                      count += 1
+                      fqdn = f"{prefix}.{base}"
+                      
+                      # Log de progresso
+                      if count % 100 == 0:
+                          print(f"Progresso: {count}/{total} - Testando {fqdn}")
+                      
+                      try:
+                          answers = resolver.resolve(fqdn, "A")
+                          for answer in answers:
+                              ip = answer.to_text()
+                              ips.add(ip)
+                              print(f"✓ {fqdn} → {ip}")
+                      except dns.resolver.NXDOMAIN:
+                          pass  # Domínio não existe
+                      except dns.resolver.NoAnswer:
+                          pass  # Sem resposta A
+                      except dns.resolver.Timeout:
+                          print(f"⏱ Timeout: {fqdn}")
+                      except Exception as e:
+                          print(f"✗ Erro em {fqdn}: {e}")
+          
+          # Salva IPs únicos ordenados
+          with output_file.open("w") as f:
+              for ip in sorted(ips, key=lambda x: tuple(map(int, x.split('.')))):
+                  f.write(ip + "\n")
+          
+          print(f"\n✓ Total de IPs únicos resolvidos: {len(ips)}")
+          PYCODE
+          
+      - name: Commit and push changes
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add allow-ip-wildcards.txt
+          
+          # Verifica se há mudanças
+          if git diff --cached --quiet; then
+            echo "Sem mudanças para commitar."
+            exit 0
+          fi
+          
+          git commit -m "🤖 Atualização automática (wildcards via wordlist) - $(date +'%Y-%m-%d %H:%M')"
+          git pull --rebase origin main || true
+          git push origin main
