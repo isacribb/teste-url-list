@@ -29,7 +29,7 @@ jobs:
           import dns.resolver
 
           input_file = "allow"
-          output_file = "allow-ip.txt"
+          output_file = "allow-ip-domains.txt"
 
           ips = set()
 
@@ -55,7 +55,7 @@ jobs:
               for ip in sorted(ips):
                   f.write(ip + "\n")
 
-          print("allow-ip.txt atualizado com sucesso.")
+          print("allow-ip-domains.txt atualizado com sucesso.")
           EOF
 
       - name: Commit and push changes
@@ -63,9 +63,9 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
 
-          git add allow-ip.txt
+          git add allow-ip-domains.txt
           git diff --cached --quiet && echo "Sem mudanças." && exit 0
 
           git commit -m "Atualização automática (domínios)"
-          git pull --rebase
+          git pull --rebase || true
           git push
