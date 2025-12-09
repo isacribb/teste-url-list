@@ -1,0 +1,43 @@
+name: Merge wildcard IPs into allow-ip
+
+on:
+  push:
+    paths:
+      - allow-ip-wildcards.txt
+
+permissions:
+  contents: write
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Wait 10 seconds
+        run: sleep 10
+
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Merge allow-ip-wildcards.txt into allow-ip.txt
+        run: |
+          touch allow-ip.txt
+          touch allow-ip-wildcards.txt
+
+          cat allow-ip.txt allow-ip-wildcards.txt \
+            | sed '/^[[:space:]]*$/d' \
+            | sort -u > allow-ip.tmp
+
+          mv allow-ip.tmp allow-ip.txt
+
+      - name: Commit and push changes
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add allow-ip.txt
+          git diff --cached --quiet && echo "Sem mudanças." && exit 0
+          git commit -m "Merge wildcard IPs into allow-ip.txt"
+          git pull --rebase || true
+          git push || git push --force
