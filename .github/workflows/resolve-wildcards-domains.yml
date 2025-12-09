@@ -1,10 +1,12 @@
+name: Resolve wildcards
+
 on:
   push:
     paths:
-    - allow
-    - wordlist.txt
+      - allow
+      - wordlist.txt
   schedule:
-  - cron: "0 9 * * 0" # 06:00 BRT (UTC-3) aos domingos
+    - cron: "0 9 * * 0" # 06:00 BRT (UTC-3) aos domingos
 
 permissions:
   contents: write
@@ -13,7 +15,7 @@ jobs:
   wildcards:
     runs-on: ubuntu-latest
     
-    steps:  # ← CORREÇÃO: Identação correta (2 espaços)
+    steps:
       - name: Wait 60 seconds to avoid conflicts
         run: sleep 60
         
@@ -39,7 +41,6 @@ jobs:
           wildcards = set()
           prefixes = set()
       
-          # Lê wildcards do arquivo allow
           if allow_file.exists():
               with allow_file.open("r") as f:
                   for line in f:
@@ -47,7 +48,6 @@ jobs:
                       if d.startswith("*.") and len(d) > 2:
                           wildcards.add(d[2:])
       
-          # Lê prefixos da wordlist
           if wordlist_file.exists():
               with wordlist_file.open("r") as f:
                   for line in f:
@@ -55,10 +55,9 @@ jobs:
                       if p and not p.startswith("#"):
                           prefixes.add(p)
           
-          # Resolve DNS para cada combinação
           if wildcards and prefixes:
               resolver = dns.resolver.Resolver()
-              resolver.timeout = 3  # MELHORIA: Aumentei timeout
+              resolver.timeout = 3
               resolver.lifetime = 5
               
               total = len(wildcards) * len(prefixes)
@@ -69,7 +68,6 @@ jobs:
                       count += 1
                       fqdn = f"{prefix}.{base}"
                       
-                      # Log de progresso
                       if count % 100 == 0:
                           print(f"Progresso: {count}/{total} - Testando {fqdn}")
                       
@@ -80,15 +78,14 @@ jobs:
                               ips.add(ip)
                               print(f"✓ {fqdn} → {ip}")
                       except dns.resolver.NXDOMAIN:
-                          pass  # Domínio não existe
+                          pass
                       except dns.resolver.NoAnswer:
-                          pass  # Sem resposta A
+                          pass
                       except dns.resolver.Timeout:
                           print(f"⏱ Timeout: {fqdn}")
                       except Exception as e:
                           print(f"✗ Erro em {fqdn}: {e}")
           
-          # Salva IPs únicos ordenados
           with output_file.open("w") as f:
               for ip in sorted(ips, key=lambda x: tuple(map(int, x.split('.')))):
                   f.write(ip + "\n")
@@ -102,12 +99,11 @@ jobs:
           git config user.email "actions@github.com"
           git add allow-ip-wildcards.txt
           
-          # Verifica se há mudanças
           if git diff --cached --quiet; then
             echo "Sem mudanças para commitar."
             exit 0
           fi
           
-          git commit -m "🤖 Atualização automática (wildcards via wordlist) - $(date +'%Y-%m-%d %H:%M')"
+          git commit -m " Atualização automática (wildcards via wordlist) - $(date +'%Y-%m-%d %H:%M')"
           git pull --rebase origin main || true
           git push origin main
