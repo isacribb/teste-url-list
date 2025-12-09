@@ -93,17 +93,33 @@ jobs:
           print(f"\n✓ Total de IPs únicos resolvidos: {len(ips)}")
           PYCODE
           
-      - name: Commit and push changes
+      - name: Commit wildcards and merge IPs
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
+
           git add allow-ip-wildcards.txt
-          
           if git diff --cached --quiet; then
-            echo "Sem mudanças para commitar."
+            echo "Sem mudanças em allow-ip-wildcards.txt."
+          else
+            git commit -m "Atualização automática (wildcards via wordlist) - $(date +'%Y-%m-%d %H:%M')"
+          fi
+
+          # Garante arquivos para o merge
+          touch allow-ip-domains.txt
+          touch allow-ip-wildcards.txt
+
+          # Merge domains + wildcards -> allow-ip.txt
+          cat allow-ip-domains.txt allow-ip-wildcards.txt \
+            | sed '/^[[:space:]]*$/d' \
+            | sort -u > allow-ip.txt
+
+          git add allow-ip.txt
+          if git diff --cached --quiet; then
+            echo "Sem mudanças em allow-ip.txt."
             exit 0
           fi
-          
-          git commit -m " Atualização automática (wildcards via wordlist) - $(date +'%Y-%m-%d %H:%M')"
+
+          git commit -m "Merge domains + wildcard IPs into allow-ip.txt"
           git pull --rebase origin main || true
-          git push origin main
+          git push origin main || git push origin main --force
