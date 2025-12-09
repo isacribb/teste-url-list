@@ -1,8 +1,9 @@
-name: Merge wildcard IPs into allow-ip
+name: Merge domains and wildcard IPs into allow-ip
 
 on:
   push:
     paths:
+      - allow-ip-domains.txt
       - allow-ip-wildcards.txt
 
 permissions:
@@ -21,16 +22,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Merge allow-ip-wildcards.txt into allow-ip.txt
+      - name: Merge allow-ip-domains.txt and allow-ip-wildcards.txt into allow-ip.txt
         run: |
-          touch allow-ip.txt
+          touch allow-ip-domains.txt
           touch allow-ip-wildcards.txt
 
-          cat allow-ip.txt allow-ip-wildcards.txt \
+          cat allow-ip-domains.txt allow-ip-wildcards.txt \
             | sed '/^[[:space:]]*$/d' \
-            | sort -u > allow-ip.tmp
-
-          mv allow-ip.tmp allow-ip.txt
+            | sort -u > allow-ip.txt
 
       - name: Commit and push changes
         run: |
@@ -38,6 +37,6 @@ jobs:
           git config user.email "actions@github.com"
           git add allow-ip.txt
           git diff --cached --quiet && echo "Sem mudanças." && exit 0
-          git commit -m "Merge wildcard IPs into allow-ip.txt"
+          git commit -m "Merge domains + wildcard IPs into allow-ip.txt"
           git pull --rebase || true
           git push || git push --force
