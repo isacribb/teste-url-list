@@ -58,14 +58,34 @@ jobs:
           print("allow-ip-domains.txt atualizado com sucesso.")
           EOF
 
-      - name: Commit and push changes
+      - name: Commit domains and merge IPs
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
 
+          # Commit da lista de domínios, se mudou
           git add allow-ip-domains.txt
-          git diff --cached --quiet && echo "Sem mudanças." && exit 0
+          if git diff --cached --quiet; then
+            echo "Sem mudanças em allow-ip-domains.txt."
+          else
+            git commit -m "Atualização automática (domínios)"
+          fi
 
-          git commit -m "Atualização automática (domínios)"
+          # Garante arquivos para o merge
+          touch allow-ip-domains.txt
+          touch allow-ip-wildcards.txt
+
+          # Merge domains + wildcards -> allow-ip.txt
+          cat allow-ip-domains.txt allow-ip-wildcards.txt \
+            | sed '/^[[:space:]]*$/d' \
+            | sort -u > allow-ip.txt
+
+          git add allow-ip.txt
+          if git diff --cached --quiet; then
+            echo "Sem mudanças em allow-ip.txt."
+            exit 0
+          fi
+
+          git commit -m "Merge domains + wildcard IPs into allow-ip.txt"
           git pull --rebase || true
-          git push
+          git push || git push --force
