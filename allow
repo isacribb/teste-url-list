@@ -1,4 +1,3 @@
-
 *.assets.msn.com
 *.attachments.office.net
 *.azureedge.net
@@ -46,3 +45,5 @@ Teams teste
 teams.cloud.microsoft
 teams.microsoft.com
 users.storage.live.com
+teams.live.com
+*.teams.live.com
