@@ -47,3 +47,6 @@ teams.microsoft.com
 users.storage.live.com
 teams.live.com
 *.teams.live.com
+prod.do.dsp.mp.microsoft.com
+*.prod.do.dsp.mp.microsoft.com
+geover.prod.do.dsp.mp.microsoft.com
