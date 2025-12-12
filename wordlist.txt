@@ -51,6 +51,7 @@ preproducao
 preprodução
 waf
 fw
+portal
 proxy
 reverse
 gw
@@ -483,14 +484,6 @@ web-app2
 web-dashboard
 web-portal
 web-services
-
-Isso já deixa sua wordlist bem mais rica em prefixos compostos típicos de aplicações web e integrações. Se notar padrões específicos nos domínios do seu cliente (por exemplo, corp-app﻿, loja-online﻿, cliente-web﻿), vale adicionar versões parecidas também.
-
-agora de governamentais, pesquise as mais usadas no brasil
-adicione tambem coisas do tipo de nota fiscal, contabil, juridico, etc, tudo que compete a uma empresa e seus processos
-seja bem complete e pesquise bem
-Para ampliar a wordlist focada em governo brasileiro e processos de empresa, pode adicionar os prefixos abaixo (um por linha). Eles cobrem portais de governo, fazenda, tribunais, esocial, NF, fiscal, contábil, jurídico, etc.
-
 text
 gov
 govbr
