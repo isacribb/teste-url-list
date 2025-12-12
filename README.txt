@@ -1,84 +1,84 @@
 # teste-url-list
 
-Automação para geração de listas de IP a partir de domínios e wildcards, usando GitHub Actions. O objetivo é alimentar firewalls (ex.: Fortigate) com uma única lista consolidada de IPs confiáveis.
+Automation to generate IP lists from domains and wildcards using GitHub Actions. The goal is to feed firewalls (e.g. Fortigate) with a single consolidated list of trusted IPs.
 
-## Visão geral
+## Overview
 
-O repositório mantém três listas principais:
+The repository maintains three main lists:
 
 - `allow`  
-  - Entrada manual.  
-  - Cada linha é um domínio ou wildcard:  
-    - Domínios comuns: `dns.google`  
+  - Manual input.  
+  - Each line is a domain or wildcard:  
+    - Regular domains: `dns.google`  
     - Wildcards: `*.gov.br`, `*.office.com`
 
 - `allow-ip-domains.txt`  
-  - Saída do workflow **Resolve Domains to IPs**.  
-  - Contém IPs únicos resolvidos apenas dos domínios “simples” (linhas de `allow` que **não** começam com `*.`).
+  - Output of the **Resolve Domains to IPs** workflow.  
+  - Contains unique IPs resolved only from “simple” domains (lines in `allow` that **do not** start with `*.`).
 
 - `allow-ip-wildcards.txt`  
-  - Saída do workflow **Resolve wildcards**.  
-  - Contém IPs únicos descobertos a partir de combinações `prefixo + wildcard`, usando a `wordlist.txt`.
+  - Output of the **Resolve wildcards** workflow.  
+  - Contains unique IPs discovered from `prefix + wildcard` combinations, using `wordlist.txt`.
 
 - `allow-ip.txt`  
-  - Lista final consumida pelo firewall.  
-  - É a união deduplicada de `allow-ip-domains.txt` + `allow-ip-wildcards.txt`.
+  - Final list consumed by the firewall.  
+  - It is the deduplicated union of `allow-ip-domains.txt` + `allow-ip-wildcards.txt`.
 
 ## Workflows
 
-Os arquivos de workflow ficam em `.github/workflows/`.
+Workflow files live in `.github/workflows/`.
 
 ### 1. resolve-domains.yml
 
-Resolve domínios “simples” para IP:
+Resolves “simple” domains to IPs:
 
-- Disparo:
-  - `push` que altere o arquivo `allow`
-  - Agendamento diário: `0 6 * * *` (03:00 BRT)
-- Passos principais:
-  - Faz checkout do repositório.
-  - Instala `dnspython`.
-  - Lê `allow` e ignora linhas que começam com `*.`.
-  - Resolve cada domínio em registro A e grava IPs únicos em `allow-ip-domains.txt`.
-  - Commita `allow-ip-domains.txt` se houve alteração.
-  - Faz o merge com `allow-ip-wildcards.txt` para gerar `allow-ip.txt` (IPs de domínios + wildcards) e commita se mudou.
+- Triggers:
+  - `push` that changes the `allow` file
+  - Daily schedule: `0 6 * * *` (03:00 BRT)
+- Main steps:
+  - Check out the repository.
+  - Install `dnspython`.
+  - Read `allow` and ignore lines starting with `*.`.
+  - Resolve each domain to A records and write unique IPs to `allow-ip-domains.txt`.
+  - Commit `allow-ip-domains.txt` if it changed.
+  - Merge with `allow-ip-wildcards.txt` to generate `allow-ip.txt` (domain + wildcard IPs) and commit if it changed.
 
 ### 2. resolve-wildcards-domains.yml
 
-Gera IPs a partir de wildcards e wordlist:
+Generates IPs from wildcards and the wordlist:
 
-- Disparo:
-  - `push` que altere `allow` ou `wordlist.txt`
-  - Agendamento semanal: `0 9 * * 0` (domingo 06:00 BRT)
-- Passos principais:
-  - Aguarda 60 segundos para evitar conflito com outros jobs.
-  - Faz checkout do repositório.
-  - Instala `dnspython`.
-  - Lê `allow` e extrai apenas linhas que começam com `*.` (removendo o `*.`).
-  - Lê `wordlist.txt` (lista de possíveis prefixos).
-  - Para cada combinação `prefixo + base` (ex.: `api.gov.br`), tenta resolver registro A.
-  - Grava IPs únicos, ordenados, em `allow-ip-wildcards.txt`.
-  - Commita `allow-ip-wildcards.txt` se houve alteração.
-  - Faz o merge com `allow-ip-domains.txt` para gerar/atualizar `allow-ip.txt` e commita se mudou.
+- Triggers:
+  - `push` that changes `allow` or `wordlist.txt`
+  - Weekly schedule: `0 9 * * 0` (Sunday 06:00 BRT)
+- Main steps:
+  - Wait 60 seconds to avoid conflicts with other jobs.
+  - Check out the repository.
+  - Install `dnspython`.
+  - Read `allow` and extract only lines starting with `*.` (removing the `*.`).
+  - Read `wordlist.txt` (list of possible prefixes).
+  - For each `prefix + base` combination (e.g. `api.gov.br`), try to resolve an A record.
+  - Write unique, sorted IPs to `allow-ip-wildcards.txt`.
+  - Commit `allow-ip-wildcards.txt` if it changed.
+  - Merge with `allow-ip-domains.txt` to generate/update `allow-ip.txt` and commit if it changed.
 
-## Arquivos importantes
+## Important files
 
 - `allow`  
-  - Onde são cadastrados os domínios e wildcards de interesse.
+  - Where the relevant domains and wildcards are registered.
 
 - `wordlist.txt`  
-  - Prefixos usados para “bruteforce” de subdomínios em cima dos wildcards (ex.: `www`, `api`, `portal`, etc.).
-  - Pode ser ajustado conforme necessidade do ambiente.
+  - Prefixes used to “bruteforce” subdomains on top of wildcards (e.g. `www`, `api`, `portal`, etc.).
+  - Can be tuned according to the environment.
 
 - `allow-ip.txt`  
-  - Arquivo que deve ser publicado/consumido pelo firewall (por exemplo, via URL raw do GitHub).
+  - File that should be published/consumed by the firewall (for example, via GitHub raw URL).
 
-## Uso típico com firewall
+## Typical firewall usage
 
-1. Configurar o firewall (ex.: Fortigate) para consumir uma External IP List / Threat Feed apontando para a URL raw de `allow-ip.txt`.  
-2. Manter o arquivo `allow` atualizado com novos domínios e wildcards.  
-3. Ajustar `wordlist.txt` conforme o tipo de ambiente (corporativo, governamental, etc.).  
-4. Os workflows se encarregam de:
-   - Resolver domínios.
-   - Descobrir subdomínios a partir de wildcards.
-   - Consolidar tudo em `allow-ip.txt` automaticamente.
+1. Configure the firewall (e.g. Fortigate) to consume an External IP List / Threat Feed pointing to the raw URL of `allow-ip.txt`.  
+2. Keep the `allow` file up to date with new domains and wildcards.  
+3. Adjust `wordlist.txt` according to the environment (corporate, government, etc.).  
+4. The workflows will:
+   - Resolve domains.  
+   - Discover subdomains from wildcards.  
+   - Consolidate everything into `allow-ip.txt` automatically.
